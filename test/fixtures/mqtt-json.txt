@@ -1,0 +1,6 @@
+msh/2/json/LongFast/!1324b352 {"channel":0,"from":321172306,"hop_start":3,"hops_away":0,"id":2474884876,"payload":{"altitude":150,"latitude_i":435945472,"longitude_i":14417920,"precision_bits":13},"sender":"!1324b352","timestamp":0,"to":4294967295,"type":"position"}
+msh/2/json/LongFast/!1324b352 {"channel":0,"from":321172306,"hop_start":3,"hops_away":0,"id":762789647,"payload":{"altitude":150,"latitude_i":435945472,"longitude_i":14417920,"precision_bits":13},"sender":"!1324b352","timestamp":0,"to":4294967295,"type":"position"}
+msh/2/json/LongFast/!1324b352 {"channel":0,"from":321172306,"hop_start":3,"hops_away":0,"id":1333928384,"payload":{"text":"Bonjour la maison"},"sender":"!1324b352","timestamp":0,"to":4294967295,"type":"text"}
+msh/2/json/LongFast/!1324b352 {"channel":0,"from":321172306,"hop_start":3,"hops_away":0,"id":4127200201,"payload":{"t":21.5},"sender":"!1324b352","timestamp":0,"to":4294967295,"type":"text"}
+msh/2/json/mqtt/ {"from":654151073,"channel":0,"type":"sendtext","payload":"Test descendant"}
+msh/2/json/LongFast/!26fd8da1 {"channel":0,"from":654151073,"hop_start":3,"hops_away":0,"id":1148755535,"payload":{"text":"Test descendant"},"sender":"!26fd8da1","timestamp":0,"to":4294967295,"type":"text"}

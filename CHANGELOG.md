@@ -12,47 +12,16 @@ the notes of the version's GitHub Release.
 
 ### Added
 
-- A working example of scene triggers, scene actions and dashboard widgets
-  (Gladys 5.1.0 or later).
-- `CHANGELOG.md`, rolled by the Release workflow.
-- A GitHub Release for every version, with its changelog section as notes: the
-  Gladys Supervision page links each version to the repository's releases.
-- CI runs the tests on Node 22 and 24, and builds the Docker image.
-- Dependabot keeps the npm dependencies and the GitHub Actions up to date.
-- `SECURITY.md` (how to report a vulnerability) and `CLAUDE.md` (project rules
-  for contributors and coding assistants).
-- Manifest tests: `version` matches `package.json`, `docker_image` is tagged
-  with it, descriptions hold 10 to 100 characters, placeholders are
-  multi-language objects.
-- The latitude and longitude fields show an example value as placeholder.
-
-### Changed
-
-- Node.js 22 or later is required (Node 20 is end-of-life).
-- Integration SDK 0.16.0. The tests now run against the fake Gladys of the
-  SDK, which refuses the payloads Gladys refuses. A device published with a
-  `poll_frequency` is now polled without `should_poll: true` on a recent
-  core (an explicit `should_poll: false` opts out); the template keeps the
-  field explicit for the older cores.
-- The refresh interval is one minute minimum, the fastest Gladys polls a
-  device. The plug's power is only sent when it changes, and every 30
-  minutes otherwise.
-
-### Fixed
-
-- Gladys refused the devices of the Discovery tab: the weather station and
-  the plug declared their poll frequency in seconds instead of one of the
-  values Gladys accepts, and were never polled. They now poll every minute,
-  and the readings follow the refresh interval of the configuration.
-
-- The release commit no longer fails `npm run format:check`: the Release
-  workflow updates the manifest `version` and `docker_image` in place instead
-  of re-printing the whole file with `jq`.
-- The integration can write to `/data`: the image creates the directory owned
-  by the `node` user, a new Docker volume was owned by root.
-- A sub-container running the integration's own image follows it to the new
-  tag at each release, as well as in the manifest of the build summary: it kept
-  the previous tag, which may not exist on the registry. Sub-containers on a
-  third-party image (a broker, a database...) keep theirs.
-
-[Unreleased]: https://github.com/GladysAssistant/integration-template-js/commits/main
+- The nodes of a Meshtastic LoRa mesh as Gladys devices, over TCP (a node on
+  Wi-Fi or Ethernet, or `meshtasticd`, port 4403) or over MQTT (the JSON of a
+  node's MQTT module): online, last heard, signal, hops away, battery, battery
+  voltage, distance from home, temperature, humidity, pressure.
+- Scene trigger "Message received", filtered by channel (or direct message) and
+  sender node, with the text, the sender and the channel as variables; a message
+  heard several times fires once.
+- Scene action "Send a message", on a channel or directly to a node (cut to 200
+  bytes).
+- Widget "Meshtastic mesh": nodes with battery and last heard, the last message,
+  and a "Send a message" button with a form; each block can be hidden.
+- "Check the connection" action, documentation in English, French, German and
+  Spanish.

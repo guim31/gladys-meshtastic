@@ -1,67 +1,148 @@
-# Template de démonstration
+# Meshtastic
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Amène votre réseau maillé LoRa [Meshtastic](https://meshtastic.org) dans Gladys : un appareil par nœud (en ligne,
+entendu pour la dernière fois, signal, sauts, batterie, tension, distance de la maison, température, humidité, pression),
+un déclencheur de scène à chaque message texte reçu et une action de scène pour en envoyer.
+
+> Développée sans matériel LoRa : testée contre le firmware officiel `meshtasticd` en radio simulée, en TCP et en MQTT.
+> Vos retours sont les bienvenus sur le forum Gladys.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+- **Appareils** : chaque nœud que connaît votre nœud est proposé dans l'onglet Découverte, nommé comme sur le maillage
+  (nom long, identifiant `!xxxxxxxx`). Ajoutez ceux qui vous intéressent. Chacun reçoit :
+  - **En ligne** (entendu dans le délai choisi) et **Entendu pour la dernière fois** (date et heure) ;
+  - **Signal (réception directe)** : de 0 à 5, d'après le SNR du dernier paquet entendu en direct (sans relais) ;
+  - **Sauts** : le nombre de relais traversés par le dernier paquet ;
+  - **Batterie** et **Tension de la batterie**, quand le nœud les transmet (un nœud sur secteur affiche 100 %) ;
+  - **Distance de la maison** en km, quand le nœud partage sa position et que votre maison Gladys est localisée ;
+  - **Température**, **Humidité**, **Pression**, quand le nœud a un capteur d'environnement.
+- **Déclencheur de scène « Message reçu »** : un message texte est arrivé sur un canal, ou en direct sur votre nœud.
+  Filtrez par canal (ou « Message direct ») et par nœud expéditeur ; le texte, le nom de l'expéditeur, son identifiant et
+  le canal sont disponibles en variables pour les actions suivantes (le relayer sur Telegram, le lire à voix haute…).
+- **Action de scène « Envoyer un message »** : envoie un texte sur un canal, ou directement à un nœud. Coupé à 200 octets,
+  la limite de la radio.
+- **Widget « Maillage Meshtastic »** : vos nœuds avec batterie et dernière écoute, le dernier message reçu, et un bouton
+  **Envoyer un message**.
+- Bouton **Vérifier la connexion** sur la page de l'intégration.
+
+L'intégration ne modifie jamais la configuration de votre radio.
+
+## Prérequis
+
+- Gladys Assistant 5.2.0 ou plus récent.
+- Soit un nœud joignable sur le réseau, en **TCP sur le port 4403** : une carte ESP32 en Wi-Fi ou Ethernet avec l'API
+  réseau activée, ou une machine Linux qui fait tourner `meshtasticd` ;
+- soit un broker MQTT local où publie le **module MQTT** d'un nœud, **sortie JSON activée** (`mqtt.json_enabled`). Le
+  JSON n'existe pas sur les cartes nRF52 (RAK4631, T-Echo…) : utilisez le TCP avec un autre nœud, ou un nœud ESP32 comme
+  passerelle.
+- La liaison série USB n'est pas prise en charge : l'intégration tourne dans un conteneur, sans accès aux ports USB.
+
+## Installation
+
+1. Dans Gladys, ouvrez **Intégrations → Installer depuis GitHub** et saisissez
+   `https://github.com/guim31/gladys-meshtastic`.
+2. Ouvrez l'intégration, choisissez la connexion et remplissez ses champs, enregistrez.
+3. Appuyez sur **Vérifier la connexion**, puis ouvrez l'onglet **Découverte** et ajoutez vos nœuds.
+
+Gladys demande la position de votre maison à l'installation : elle ne sert qu'à la distance, et ne quitte jamais votre
+Gladys.
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+| Champ                 | Usage                                                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connexion             | **TCP vers un nœud** (conseillé : liste complète des nœuds, noms des canaux, messages directs) ou **Broker MQTT (JSON)**.                               |
+| Adresse du nœud (TCP) | Adresse IP ou nom d'hôte du nœud, par exemple `192.0.2.40`. Port `4403` sauf modification.                                                              |
+| Adresse du broker     | `mqtt://hôte:1883` ou `mqtts://hôte:8883`, avec nom d'utilisateur et mot de passe s'il y en a.                                                          |
+| Sujet racine          | Le sujet racine du module MQTT du nœud, `msh` par défaut. Le firmware y ajoute la région (`msh/EU_868/2/json/…`).                                       |
+| Nœud d'envoi (MQTT)   | Identifiant (`!a1b2c3d4`) du nœud qui envoie vos messages en MQTT. Vide : le dernier nœud entendu.                                                      |
+| Hors ligne après      | Un nœud non entendu depuis ce délai est indiqué hors ligne (2 heures par défaut ; les nœuds envoient leur télémétrie toutes les 30 minutes par défaut). |
+| Langue des textes     | Langue des noms de fonctionnalités et des messages de l'intégration.                                                                                    |
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+### TCP
 
-## Actions
+Sur le nœud, activez le Wi-Fi ou l'Ethernet dans les réglages réseau (l'API réseau écoute sur le port 4403). **Un nœud
+n'accepte qu'un client TCP à la fois** : tant que Gladys est connecté, l'appli Meshtastic ne peut pas se connecter au même
+nœud en Wi-Fi (le Bluetooth fonctionne toujours). L'intégration se reconnecte seule toutes les 15 secondes après une
+coupure.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+### MQTT
+
+Sur le nœud passerelle : module MQTT activé, adresse de **votre broker local**, **sortie JSON activée**, et **uplink**
+activé sur les canaux à suivre. L'intégration s'abonne à `<racine>/#` et lit les sujets `…/2/json/…` ; les paquets
+chiffrés sont ignorés. Ne la branchez pas sur le broker public `mqtt.meshtastic.org` : il transporte le monde entier.
+
+Pour **envoyer** en MQTT, la passerelle doit avoir un canal nommé `mqtt` avec le **downlink** activé (sa clé importe peu),
+puis un redémarrage ; c'est ainsi que le firmware accepte des messages JSON à envoyer. Indiquez son identifiant dans
+**Nœud d'envoi** si plusieurs nœuds publient sur le broker.
+
+## Appareils et fonctionnalités
+
+Une fonctionnalité n'apparaît que si le nœud l'a transmise quand vous l'ajoutez (batterie, position, capteur
+d'environnement). Si elle apparaît plus tard, Gladys affiche **Mettre à jour** à côté du nœud dans l'onglet Découverte.
+
+- Le **signal** est celui du dernier paquet entendu **en direct** par votre nœud : un nœud toujours entendu par des relais
+  n'a pas de valeur. Échelle : 5 pour un SNR de 5 dB ou plus, 4 dès 0 dB, 3 dès -5 dB, 2 dès -10 dB, 1 en dessous.
+- **Sauts** compte les relais du dernier paquet (0 : entendu en direct).
+- Le nœud auquel vous êtes connecté en TCP est toujours en ligne tant que la connexion tient.
+- Après un redémarrage, un nœud pas encore entendu n'est indiqué hors ligne qu'une fois le délai écoulé.
 
 ## Scènes
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+### Message reçu
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+Se déclenche une fois par message, même entendu plusieurs fois (relais, plusieurs passerelles MQTT). Filtres :
 
-## Tableau de bord
+- **Canal** : un numéro de canal (0 est le canal principal), ou **Message direct** ;
+- **Nœud expéditeur** : un de vos appareils nœuds.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Variables : **Texte du message**, **Nom de l'expéditeur** (son nom dans Gladys si vous l'avez ajouté, sinon sur le
+maillage), **Identifiant du nœud expéditeur**, **Canal** (`0`…`7` ou `direct`). Les messages envoyés depuis Gladys ne le
+déclenchent pas.
+
+### Envoyer un message
+
+Champs : le **message**, le **canal** (numéro sur votre nœud), et en option un **nœud** pour un message direct. Sorties :
+**Envoyé**, **Coupé à 200 octets**, **Phrase** (par exemple « Message envoyé sur le canal 0. »). L'action échoue, avec un
+message clair, quand le texte est vide ou le maillage non connecté.
+
+## Widget
+
+**Maillage Meshtastic** affiche les nœuds que vous avez ajoutés (en ligne d'abord, avec la batterie et depuis quand ils
+n'ont pas été entendus), le dernier message reçu, et un bouton **Envoyer un message** qui ouvre un petit formulaire (texte
+et canal). Chaque bloc se masque dans les réglages du widget : **Afficher le dernier message**, **Afficher le bouton
+d'envoi**, **Masquer les nœuds hors ligne**.
+
+## Limites
+
+- Développée et testée sans matériel LoRa, contre `meshtasticd` en radio simulée : vos retours sont les bienvenus.
+- Ni liaison série USB ni Bluetooth : TCP ou MQTT seulement.
+- En MQTT, on ne voit que ce qu'une passerelle publie en JSON ; pas de noms de canaux, et un message direct ne part que si
+  la passerelle peut joindre le nœud.
+- Points de passage, traceroutes, voisins et autres modules ne sont pas affichés.
+- Un texte est limité à 200 octets (environ 200 lettres sans accent, moins avec accents ou emoji).
+
+## Confidentialité et réseau
+
+Tout reste sur votre réseau local : l'intégration ne parle qu'à votre nœud ou à votre broker. Les messages reçus sont
+gardés en mémoire (les 20 derniers, pour le widget) et jamais écrits sur disque. L'identifiant client MQTT est stocké dans
+`/data`. Le mot de passe du broker n'est jamais écrit dans les journaux.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Le nœud Meshtastic ne répond pas en TCP »** : vérifiez l'adresse, que le Wi-Fi ou l'Ethernet est activé, et que
+  l'appli Meshtastic n'est pas connectée au nœud en Wi-Fi au même moment.
+- **Connecté en MQTT mais aucun nœud** : vérifiez le sujet racine et que la sortie JSON est activée
+  (`mqtt.json_enabled`).
+- **« Aucune passerelle entendue en MQTT »** : l'intégration apprend le sujet d'envoi du trafic ; attendez un premier
+  paquet.
+- **Un message ne part pas en MQTT** : la passerelle doit avoir un canal nommé `mqtt` avec le downlink activé, puis un
+  redémarrage.
+- Journaux détaillés : lancez l'intégration avec `LOG_LEVEL=debug`.
+
+## Crédits
+
+Meshtastic® est une marque déposée de Meshtastic LLC. Cette intégration n'est ni affiliée à Meshtastic LLC ni approuvée
+par elle. Elle lit l'API client publique (numéros de champs protobuf de
+[meshtastic/protobufs](https://github.com/meshtastic/protobufs)) et le format JSON du firmware, sans reprendre leur code.

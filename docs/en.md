@@ -1,61 +1,141 @@
-# Demo Devices Template
+# Meshtastic
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Brings your [Meshtastic](https://meshtastic.org) LoRa mesh into Gladys: one device per node (online, last heard,
+signal, hops, battery, voltage, distance from home, temperature, humidity, pressure), a scene trigger on every text
+message received and a scene action to send one.
+
+> Developed without LoRa hardware: tested against the official `meshtasticd` firmware in simulated-radio mode, over TCP
+> and over MQTT. Feedback welcome on the Gladys forum.
 
 ## What you get
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+- **Devices**: every node your node knows is offered in the Discovery tab, named as on the mesh (long name, `!xxxxxxxx`
+  id). Add the ones you care about. Each one gets:
+  - **Online** (heard within the delay you choose) and **Last heard** (date and time);
+  - **Signal (direct reception)**: 0 to 5, from the SNR of the last packet heard directly (no relay);
+  - **Hops away**: how many relays the last packet went through;
+  - **Battery** and **Battery voltage**, when the node reports them (a node on mains power reads 100 %);
+  - **Distance from home** in km, when the node shares its position and your Gladys house is located;
+  - **Temperature**, **Humidity**, **Pressure**, when the node has an environment sensor.
+- **Scene trigger "Message received"**: a text message arrived on a channel, or directly to your node. Filter by channel
+  (or "Direct message") and by sender node; the text, the sender name, its id and the channel are available as variables
+  for the next actions (send it on Telegram, say it out loud...).
+- **Scene action "Send a message"**: sends a text on a channel, or directly to one node. Cut to 200 bytes, the radio limit.
+- **Widget "Meshtastic mesh"**: your nodes with battery and last heard, the last message received, and a **Send a
+  message** button.
+- **Check the connection** button on the integration page.
+
+The integration never changes the configuration of your radio.
+
+## Requirements
+
+- Gladys Assistant 5.2.0 or later.
+- Either a node reachable on the network, on **TCP port 4403**: an ESP32 board on Wi-Fi or Ethernet with the network API
+  on, or a Linux host running `meshtasticd`;
+- or a local MQTT broker the **MQTT module** of a node publishes to, with **JSON output on** (`mqtt.json_enabled`).
+  JSON is not available on nRF52 boards (RAK4631, T-Echo...): use TCP with another node, or an ESP32 node as gateway.
+- USB serial is not supported: the integration runs in a container, without access to the USB ports.
+
+## Installation
+
+1. In Gladys, open **Integrations → Install from GitHub** and enter `https://github.com/guim31/gladys-meshtastic`.
+2. Open the integration, choose the connection and fill in its fields, save.
+3. Press **Check the connection**, then open the **Discovery** tab and add your nodes.
+
+Gladys asks for the location of your house at installation: it is only used for the distance feature, and never leaves
+your Gladys.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+| Field               | Use                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Connection          | **TCP to a node** (recommended: full node list, channel names, direct messages) or **MQTT broker (JSON)**.              |
+| Node address (TCP)  | IP address or host name of the node, e.g. `192.0.2.40`. Port `4403` unless changed.                                     |
+| Broker address      | `mqtt://host:1883` or `mqtts://host:8883`, with its user name and password if any.                                      |
+| Root topic          | The root topic of the node's MQTT module, `msh` by default. The firmware adds the region (`msh/EU_868/2/json/...`).     |
+| Sending node (MQTT) | Id (`!a1b2c3d4`) of the node that sends your messages over MQTT. Empty: the last node heard.                            |
+| Offline after       | A node not heard for this long is shown offline (2 hours by default; nodes send telemetry every 30 minutes by default). |
+| Language            | Language of the feature names and of the messages of the integration.                                                   |
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+### TCP
 
-## Actions
+On the node, turn on Wi-Fi or Ethernet in the network settings (the network API listens on port 4403). **A node accepts
+one TCP client at a time**: while Gladys is connected, the Meshtastic app cannot connect to the same node over Wi-Fi
+(Bluetooth still works). The integration reconnects by itself every 15 seconds after a cut.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+### MQTT
+
+On the gateway node: MQTT module on, address of **your local broker**, **JSON output on**, and **uplink** enabled on the
+channels to follow. The integration subscribes to `<root>/#` and reads the `.../2/json/...` topics; encrypted packets are
+ignored. Do not point it at the public broker `mqtt.meshtastic.org`: it carries the whole world.
+
+To **send** over MQTT, the gateway needs a channel named `mqtt` with **downlink** enabled (its key does not matter),
+then a reboot; that is how the firmware accepts JSON messages to send. Put its id in **Sending node** if several nodes
+publish to the broker.
+
+## Devices and features
+
+A feature appears only when the node has reported it when you add it (battery, position, environment sensor). If one
+appears later, Gladys shows **Update** next to the node in the Discovery tab.
+
+- The **signal** is the one of the last packet heard **directly** by your node: a node always heard through relays keeps no
+  value. Scale: 5 for an SNR of 5 dB or more, 4 from 0 dB, 3 from -5 dB, 2 from -10 dB, 1 below.
+- **Hops away** counts the relays of the last packet (0: heard directly).
+- The node you are connected to over TCP is always online while the connection is up.
+- After a restart, a node not heard yet is shown offline only once the offline delay has passed.
 
 ## Scenes
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+### Message received
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+Fires once per message, even when it is heard several times (relays, several MQTT gateways). Filters:
 
-## Dashboard
+- **Channel**: a channel index (0 is the primary channel), or **Direct message**;
+- **Sender node**: one of your node devices.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+Variables: **Message text**, **Sender name** (its name in Gladys if you added it, else on the mesh), **Sender node id**,
+**Channel** (`0`...`7` or `direct`). Messages you send from Gladys do not fire it.
+
+### Send a message
+
+Fields: the **message**, the **channel** (index on your node), and optionally a **node** for a direct message. Outputs:
+**Sent**, **Cut to 200 bytes**, **Sentence** (e.g. "Message sent to channel 0."). The action fails, with a clear message,
+when the text is empty or the mesh not connected.
+
+## Widget
+
+**Meshtastic mesh** shows the nodes you added (online first, with battery and how long ago they were heard), the last
+message received, and a **Send a message** button opening a small form (text and channel). Each block can be hidden in
+the widget settings: **Show the last message**, **Show the send button**, **Hide offline nodes**.
+
+## Limits
+
+- Developed and tested without LoRa hardware, against `meshtasticd` in simulated-radio mode: feedback welcome.
+- No USB serial, no Bluetooth: TCP or MQTT only.
+- Over MQTT, only what a gateway publishes in JSON is seen; no channel names, and a direct message is sent only if the
+  gateway can reach the node.
+- Waypoints, traceroutes, neighbor info and other modules are not shown.
+- A text is limited to 200 bytes (about 200 Latin letters, fewer with accents or emoji).
+
+## Privacy and network
+
+Everything stays on your local network: the integration talks only to your node or to your broker. Received messages are
+kept in memory (the last 20, for the widget) and never written to disk. The MQTT client id is stored in `/data`. The
+broker password is never written in the logs.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"The Meshtastic node does not answer on TCP"**: check the address, that Wi-Fi or Ethernet is on, and that the
+  Meshtastic app is not connected to the node over Wi-Fi at the same time.
+- **Connected over MQTT but no node**: check the root topic and that JSON output is on (`mqtt.json_enabled`).
+- **"No gateway heard on MQTT yet"**: the integration learns the topic to send to from the traffic; wait for a first
+  packet.
+- **A message is not sent over MQTT**: the gateway needs a channel named `mqtt` with downlink enabled, then a reboot.
+- Detailed logs: start the integration with `LOG_LEVEL=debug`.
+
+## Credits
+
+Meshtastic® is a registered trademark of Meshtastic LLC. This integration is not affiliated with or endorsed by
+Meshtastic LLC. It reads the public client API (protobuf field numbers of
+[meshtastic/protobufs](https://github.com/meshtastic/protobufs)) and the JSON format of the firmware, without reusing
+their code.
