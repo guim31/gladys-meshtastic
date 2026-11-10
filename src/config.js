@@ -106,6 +106,7 @@ export function normalizeConfig(raw = {}) {
     topic_root: normalizeRoot(source.topic_root),
     // The node that sends our texts over MQTT (`!a1b2c3d4`); null: the last gateway heard.
     gateway: text(source.gateway) === '' ? null : nodeNum(text(source.gateway)),
+    gateway_invalid: text(source.gateway) !== '' && nodeNum(text(source.gateway)) === null,
     // Milliseconds.
     offline_after_ms:
       Number(

@@ -61,6 +61,16 @@ const LINK_KEYS = [
   'topic_root',
 ];
 
+// The firmware publishes a text that parses as JSON parsed, then we print it
+// back: compare JSON texts in their compact form.
+function sameText(text) {
+  try {
+    return JSON.stringify(JSON.parse(text));
+  } catch {
+    return text;
+  }
+}
+
 const round = (value, digits) => Math.round(value * 10 ** digits) / 10 ** digits;
 
 export class Hub {
@@ -105,7 +115,11 @@ export class Hub {
     this.config = config;
     const sameLink = previous && LINK_KEYS.every((key) => previous[key] === config[key]);
     if (sameLink && this.link) {
-      // Only the language or the offline delay changed.
+      // Only the language or the offline delay changed (or Gladys restarted:
+      // tell it again the link is up).
+      if (this.link.state === 'connected') {
+        await this.#status(true);
+      }
       this.discoveryKey = '';
       this.scheduleDiscovery();
       await this.tick();
@@ -117,6 +131,9 @@ export class Hub {
     this.connectedAt = null;
     this.gateway = null;
     this.seen.clear();
+    if (config.gateway_invalid) {
+      logger.warn('The sending node is not a node id (!a1b2c3d4): the last gateway heard is used');
+    }
     if (!isConfigured(config)) {
       await this.#status(false, MESSAGES.notConfigured);
       return;
@@ -223,7 +240,10 @@ export class Hub {
     if (!event) {
       return;
     }
-    if (event.gateway !== null) {
+    // The prefix (root and region) is learnt from the configured sending node
+    // when there is one: another gateway may publish under another region.
+    const configured = this.config.gateway;
+    if (event.gateway !== null && (configured === null || event.gateway === configured)) {
       this.gateway = { num: event.gateway, prefix: event.prefix };
     }
     this.onEvent(event);
@@ -292,8 +312,9 @@ export class Hub {
 
   #isEcho(event, now) {
     this.sent = this.sent.filter((entry) => now - entry.at < this.timings.echoMs);
+    const text = sameText(event.data);
     const index = this.sent.findIndex(
-      (entry) => entry.text === event.data && entry.from === event.from,
+      (entry) => sameText(entry.text) === text && entry.from === event.from,
     );
     if (index < 0) {
       return false;
@@ -366,13 +387,8 @@ export class Hub {
   // --- states -----------------------------------------------------------------
 
   isOnline(node, now = this.now()) {
-    if (
-      node &&
-      node.num === this.mesh.myNum &&
-      this.config.connection === 'tcp' &&
-      this.link?.state === 'connected'
-    ) {
-      return true; // the node we are connected to
+    if (node && node.num === this.mesh.myNum && this.config.connection === 'tcp') {
+      return this.link?.state === 'connected'; // the node we are connected to
     }
     return node?.lastHeard !== null && node?.lastHeard !== undefined
       ? now - node.lastHeard < this.config.offline_after_ms
@@ -436,7 +452,9 @@ export class Hub {
 
   /** Every added node: what time changed (online, last heard) and the rest. */
   async tick() {
-    if (!isConfigured(this.config) || this.link?.state !== 'connected') {
+    // Also while the link is down: nothing is heard, the nodes go offline
+    // after the delay (the TCP node at once), as they would on the mesh.
+    if (!isConfigured(this.config) || !this.link || this.connectedAt === null) {
       return;
     }
     const now = this.now();

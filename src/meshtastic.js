@@ -113,7 +113,8 @@ function decodePacket(fields) {
     id: pb.fixed32(fields, 6) ?? 0,
     rxTime: pb.fixed32(fields, 7) ?? 0,
     snr: finite(pb.float(fields, 8)),
-    hopsAway: hopsOf(pb.uint(fields, 15) ?? 0, pb.uint(fields, 9)),
+    // hop_limit 0 (all hops used) is absent on the wire (proto3 default).
+    hopsAway: hopsOf(pb.uint(fields, 15) ?? 0, pb.uint(fields, 9) ?? 0),
     viaMqtt: pb.bool(fields, 14) ?? false,
   };
   if (portnum === PORT.TEXT) {
@@ -222,8 +223,10 @@ export function parseJsonTopic(topic) {
   for (let i = parts.length - 4; i >= 0; i -= 1) {
     if (parts[i] === '2' && parts[i + 1] === 'json') {
       const channelName = parts[i + 2];
-      // `<prefix>/2/json/mqtt/` is the downlink topic: what we (or others) send.
-      if (channelName === 'mqtt' || !channelName) {
+      // `<prefix>/2/json/mqtt/` (no gateway) is the downlink topic: what we
+      // (or others) send.
+      const gateway = parts[i + 3] ?? '';
+      if (!channelName || (channelName === 'mqtt' && gateway === '')) {
         return null;
       }
       return { prefix: parts.slice(0, i).join('/'), channelName, gateway: parts[i + 3] ?? '' };
@@ -275,7 +278,10 @@ export function parseJsonMessage(topic, payload) {
       return {
         ...base,
         port: 'text',
-        data: typeof data.text === 'string' ? data.text : JSON.stringify(json.payload ?? ''),
+        data:
+          typeof data.text === 'string' && Object.keys(data).length === 1
+            ? data.text
+            : JSON.stringify(json.payload ?? ''),
       };
     case 'position':
       return { ...base, port: 'position', data: normalizePosition(data) };

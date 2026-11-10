@@ -60,6 +60,20 @@ test('the packets of a remote node decode like the official encoder wrote them',
   assert.equal(decodeFromRadio(SYNTHETIC.nodeinfo).data.longName, 'Relais Colline');
 });
 
+test('a packet that used all its hops (hop_limit 0, absent on the wire) tells them', async () => {
+  const { encode } = await import('../src/protobuf.js');
+  const data = encode([
+    [1, 'varint', 1],
+    [2, 'bytes', Buffer.from('loin')],
+  ]);
+  const packet = encode([
+    [1, 'fixed32', 5],
+    [4, 'message', data],
+    [15, 'varint', 3],
+  ]);
+  assert.equal(decodeFromRadio(encode([[2, 'message', packet]])).hopsAway, 3);
+});
+
 test('a malformed message throws, the stream reader resyncs on garbage', () => {
   assert.throws(() => decodeFromRadio(Buffer.from([0x12, 0x05, 0x01])));
   const reader = new FrameReader();

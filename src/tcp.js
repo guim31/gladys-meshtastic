@@ -133,8 +133,14 @@ export function createTcpClient({ host, port, onEvent, onState, connect = net.cr
     socket = current;
     current.setNoDelay?.(true);
     current.setTimeout?.(CONNECT_TIMEOUT_MS);
+    // A node that vanishes without closing (power cut, Wi-Fi lost) is found
+    // within minutes, not after the TCP retransmission delay.
+    current.setKeepAlive?.(true, 60_000);
 
     current.on('connect', () => {
+      if (stopped || socket !== current) {
+        return; // stopped or replaced while connecting
+      }
       // Connected: no more idle timeout, the heartbeat takes over.
       current.setTimeout?.(0);
       nonce = randomInt(1, 0x7fffffff);

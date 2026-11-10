@@ -69,7 +69,8 @@ test('TCP: every node of the node database is offered, named as on the mesh', as
   // Battery (powered: 100), position (house located): distance.
   assert.deepEqual(
     own.features.map((f) => f.external_id.split(':').pop()),
-    ['online', 'last_heard', 'signal', 'hops', 'battery', 'distance'],
+    // Never heard directly (it is the TCP node itself): no signal, no hops.
+    ['online', 'last_heard', 'battery', 'distance'],
   );
 });
 
@@ -344,19 +345,56 @@ test('MQTT: send_message publishes the JSON downlink the firmware accepts, its e
   assert.equal(world.gladys.fake.sceneEvents.length, events);
 });
 
-test('MQTT: the configured sending node wins over the last gateway heard', async (t) => {
-  const { world } = await mqttWorld(t, { gateway: '!0a0b0c0d' });
-  const text = JSON_LINES.find((line) => line.payload.includes('Bonjour'));
-  world.broker.send(text.topic, text.payload);
+test('MQTT: the configured sending node sends, under the prefix it publishes on', async (t) => {
+  const { world } = await mqttWorld(t, { gateway: '!26fd8da1' });
+  const gateway = JSON_LINES.find((l) => l.topic.endsWith('!26fd8da1'));
+  const station = JSON_LINES.find((line) => line.payload.includes('Bonjour'));
+  world.broker.send(gateway.topic.replace('msh/', 'msh/EU_868/'), gateway.payload);
+  // Another gateway, in another region, heard last.
+  world.broker.send(station.topic.replace('msh/', 'msh/EU_433/'), station.payload);
   await flush();
   await world.gladys.fake.sceneAction('send_message', { text: 'Salut', channel: '1' });
-  assert.equal(SENDER_MQTT, 0x26fd8da1);
+  assert.equal(world.broker.published[0].topic, 'msh/EU_868/2/json/mqtt/');
   assert.deepEqual(JSON.parse(world.broker.published[0].payload), {
-    from: 0x0a0b0c0d,
+    from: SENDER_MQTT,
     channel: 1,
     type: 'sendtext',
     payload: 'Salut',
   });
+});
+
+test('MQTT: the echo of a JSON text sent from Gladys is recognized, reformatted', async (t) => {
+  const { world } = await mqttWorld(t);
+  const gateway = JSON_LINES.find((l) => l.topic.endsWith('!26fd8da1'));
+  world.broker.send(gateway.topic, gateway.payload);
+  await flush();
+  const before = world.gladys.fake.sceneEvents.length;
+  await world.gladys.fake.sceneAction('send_message', { text: '{"a": 1}', channel: '0' });
+  // The firmware publishes it parsed: {"a":1}.
+  world.broker.send(
+    gateway.topic,
+    gateway.payload.replace('{"text":"Test descendant"}', '{"a":1}').replace('1148755535', '7'),
+  );
+  await flush();
+  assert.equal(world.gladys.fake.sceneEvents.length, before);
+});
+
+test('a lost link: the TCP node goes offline at once, the others after the delay', async (t) => {
+  const { world, time } = await withRemote(t);
+  const own = nodeIds(world.gladys, ME);
+  const remote = nodeIds(world.gladys, REMOTE);
+  await addDiscovered(world, own.device);
+  await addDiscovered(world, remote.device);
+  world.node.send(SYNTHETIC['device telemetry']);
+  await flush();
+  world.node.drop();
+  await flush();
+  await world.hub.tick();
+  assert.equal(lastState(world, own.feature('online')), 0);
+  assert.equal(lastState(world, remote.feature('online')), 1);
+  time.advance(121 * MINUTE);
+  await world.hub.tick();
+  assert.equal(lastState(world, remote.feature('online')), 0);
 });
 
 test('check_connection tells the state of the link', async (t) => {

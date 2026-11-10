@@ -12,7 +12,7 @@
 //   voltage      energy-sensor/voltage, V;
 //   distance     distance-sensor/decimal, km from the Gladys house;
 //   temperature, humidity, pressure: environment telemetry.
-// The last five only when the node has reported them (and the house is
+// Signal, hops and the last six only when the node has reported them (and the house is
 // located, for the distance) when it is discovered; Gladys offers "Update" in
 // the Discovery tab when one appears later.
 // Pushed, never polled. Feature keys are forever: never renamed.
@@ -55,8 +55,9 @@ export function featureKeys(node, hasHome) {
   return [
     'online',
     'last_heard',
-    'signal',
-    'hops',
+    // Not for a node never heard directly (or the TCP node itself).
+    ...(node.snr !== null ? ['signal'] : []),
+    ...(node.hopsAway !== null ? ['hops'] : []),
     ...(node.battery !== null ? ['battery'] : []),
     ...(node.voltage !== null ? ['voltage'] : []),
     ...(node.position && hasHome ? ['distance'] : []),

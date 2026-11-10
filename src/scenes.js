@@ -23,7 +23,8 @@ export const SCENE_ACTION = {
  */
 export async function sendMessage(hub, fields = {}) {
   const text = pick(SEND_TEXT, hub.config?.language ?? 'fr');
-  const channel = Number(fields.channel ?? 0);
+  const asked = Number(fields.channel ?? 0);
+  const channel = CHANNELS.includes(asked) ? asked : 0;
   let to = BROADCAST;
   if (fields.node) {
     to = nodeNumOf(hub.gladys, fields.node);
@@ -33,7 +34,7 @@ export async function sendMessage(hub, fields = {}) {
   }
   const { clipped } = await hub.sendText({
     text: fields.text,
-    channel: CHANNELS.includes(channel) ? channel : 0,
+    channel,
     to,
   });
   const device = (hub.gladys.devices ?? []).find((d) => d.external_id === fields.node);
