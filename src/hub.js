@@ -65,7 +65,17 @@ const LINK_KEYS = [
 // back: compare JSON texts in their compact form.
 function sameText(text) {
   try {
-    return JSON.stringify(JSON.parse(text));
+    const parsed = JSON.parse(text);
+    // A lone { text } object is told back as its text (parseJsonMessage).
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.text === 'string' &&
+      Object.keys(parsed).length === 1
+    ) {
+      return parsed.text;
+    }
+    return JSON.stringify(parsed);
   } catch {
     return text;
   }
