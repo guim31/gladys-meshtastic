@@ -1,77 +1,89 @@
+// -----------------------------------------------------------------------------
+// The mesh widget: content valid for the core (validateWidgetContent), the
+// Gladys names, the settings that hide each block, and the send button.
+// -----------------------------------------------------------------------------
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { nodeIds } from '../src/devices.js';
+import {
+  REMOTE,
+  SYNTHETIC,
+  T0,
+  addDiscovered,
+  createWorld,
+  flush,
+  sentPackets,
+} from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+async function world(t) {
+  const w = await createWorld({ now: () => T0 });
+  t.after(() => w.app.stop());
+  w.node.accept();
+  w.node.send(SYNTHETIC['remote node_info']);
+  w.node.send(SYNTHETIC['text broadcast']);
+  await flush();
+  await w.hub.publishDiscovery();
+  return w;
+}
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
+function check(content) {
+  const report = validateWidgetContent(content);
+  assert.deepEqual(report.errors ?? [], [], JSON.stringify(report));
+  return content;
+}
 
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
+test('before any node is added, the widget says how to add them', async (t) => {
+  const w = await world(t);
+  const ack = await w.gladys.fake.widgetGet('mesh', { language: 'de' });
+  assert.match(check(ack.data.content).components[0].text, /Füge die Knoten zuerst/);
 });
 
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
-    );
-  } finally {
-    simulateLanSession(true);
-  }
-});
-
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
-  );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
-});
-
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
-});
-
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+test('one line per added node with its Gladys name, the last message, the send button', async (t) => {
+  const w = await world(t);
+  const device = await addDiscovered(w, nodeIds(w.gladys, REMOTE).device);
+  await w.gladys.fake.deviceUpdated({ ...device, name: 'Relais' });
+  w.gladys.devices[0].name = 'Relais';
+  const ack = await w.gladys.fake.widgetGet('mesh', { language: 'fr' });
+  const [status, text, button] = check(ack.data.content).components;
+  assert.deepEqual(status.items, [
+    { label: 'Relais', value: "76 % · à l'instant", icon: 'radio', color: 'success' },
+  ]);
+  assert.equal(text.text, 'Relais (Canal 0, 10/11 18:00) : Bonjour la maison');
+  assert.equal(button.action.key, 'send');
+  // Channels of the node: only the primary is enabled in the capture.
+  assert.deepEqual(
+    button.action.fields[1].options.map((o) => o.value),
+    ['0'],
   );
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('the settings hide the message, the button and the offline nodes', async (t) => {
+  const w = await world(t);
+  await addDiscovered(w, nodeIds(w.gladys, REMOTE).device);
+  const ack = await w.gladys.fake.widgetGet('mesh', {
+    language: 'en',
+    settings: { show_message: false, show_send: false, hide_offline: true },
+  });
+  assert.deepEqual(
+    check(ack.data.content).components.map((c) => c.type),
+    ['status'],
+  );
+});
+
+test('the send button sends on the chosen channel, with a toast in four languages', async (t) => {
+  const w = await world(t);
+  await addDiscovered(w, nodeIds(w.gladys, REMOTE).device);
+  const ack = await w.gladys.fake.widgetAction(
+    'mesh',
+    'send',
+    {},
+    {
+      values: { text: 'On arrive', channel: '0' },
+    },
+  );
+  assert.equal(ack.success, true, ack.error);
+  assert.equal(ack.data.message.fr, 'Message envoyé.');
+  assert.equal(sentPackets(w).length, 1);
 });

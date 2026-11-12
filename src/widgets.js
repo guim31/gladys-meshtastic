@@ -1,169 +1,249 @@
 // -----------------------------------------------------------------------------
-// Dashboard widgets (SDK v0.14+, Gladys 5.1+).
-//
-// A widget puts the integration's own data on the Gladys dashboard without a
-// dedicated core widget. The manifest `widgets` field declares its identity
-// (key, label, icon, optional per-instance `settings`); at runtime the
-// integration returns a DECLARATIVE content — `text`, `value`, `gauge`,
-// `status`, `chart`, `card-list`, `image`, `button` — that the core renders
-// with its own theme, dark mode and translations. No HTML, no CSS.
-//
-// Each entry of WIDGETS is keyed by the widget `key` and exposes:
-//   - get(gladys, { settings, language, units, config }): the content,
-//     registered by index.js with `gladys.onWidgetGet(key, ...)`;
-//   - action(gladys, { actionKey, params, settings, config }) (optional): a
-//     tapped `button` carrying an `action`, registered with
-//     `gladys.onWidgetAction`.
-//
-// Check your contents in the tests with `validateWidgetContent` (exported by
-// the SDK, see test/widgets.test.js), or run with DEBUG=gladys-integration-sdk
-// to have the SDK log every violation of the vocabulary and the budget.
+// The "Meshtastic mesh" dashboard widget:
+//   - one status line per node added in Gladys (its Gladys name): battery and
+//     how long ago it was heard, red when offline (10 lines at most, online
+//     nodes first);
+//   - the last text message received (body text), hidden by a setting;
+//   - a "Send a message" button opening a form (text, channel), hidden by a
+//     setting. Button forms need Gladys 5.2.0 (#3168).
+// Pre-localized from the viewer's `language` (the core caches the content per
+// settings, language and units).
 // -----------------------------------------------------------------------------
 
-import {
-  createLogger,
-  DEVICE_FEATURE_CATEGORIES,
-  DEVICE_TRANSPORTS,
-  WIDGET_COLORS,
-} from '@gladysassistant/integration-sdk';
-import { identifyDevice } from './devices/index.js';
-import { weatherStation } from './devices/weatherStation.js';
-import { plug } from './devices/plug.js';
-import { light } from './devices/light.js';
+import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
+import { isConfigured } from './config.js';
+import { WIDGET_KEY } from './hub.js';
+import { formatAgo, formatHeard, pick } from './texts.js';
 
-const logger = createLogger({ name: 'widgets' });
+export const WIDGET = {
+  MESH: WIDGET_KEY,
+};
+export const WIDGET_ACTION = {
+  SEND: 'send',
+};
 
-// Widget key, as declared in the manifest `widgets` field.
-export const DEMO_STATUS_WIDGET = 'demo_status';
+export const CONTENT_TTL_SECONDS = 60;
+export const MAX_LINES = 10;
+export const CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7];
 
-// Keys of the `button` actions the demo_status content declares.
-const DEMO_STATUS_ACTIONS = { IDENTIFY_LIGHT: 'identify_light' };
-
-// How the plug transport reads in the status list.
-const TRANSPORT_STATUS = {
-  [DEVICE_TRANSPORTS.LOCAL]: { value: { en: 'Local', fr: 'Locale' }, color: WIDGET_COLORS.SUCCESS },
-  [DEVICE_TRANSPORTS.CLOUD]: { value: { en: 'Cloud', fr: 'Cloud' }, color: WIDGET_COLORS.INFO },
-  [DEVICE_TRANSPORTS.UNREACHABLE]: {
-    value: { en: 'Unreachable', fr: 'Injoignable' },
-    color: WIDGET_COLORS.DANGER,
+export const TEXT = {
+  en: {
+    notConfigured:
+      'Enter the address of a Meshtastic node or of the MQTT broker in the configuration.',
+    noNode: 'Add the nodes to Gladys first (Discovery tab of the integration).',
+    offline: 'Offline',
+    never: 'Not heard yet',
+    lastMessage: (name, channel, time, text) => `${name} (${channel}, ${time}): ${text}`,
+    direct: 'direct',
+    channel: (index, name) => (name ? `Channel ${index} · ${name}` : `Channel ${index}`),
+    send: 'Send a message',
+    text: 'Message',
+    channelField: 'Channel',
+    sent: 'Message sent.',
+    clipped: 'Message cut to 200 bytes and sent.',
+  },
+  fr: {
+    notConfigured:
+      "Saisissez l'adresse d'un nœud Meshtastic ou du broker MQTT dans la configuration.",
+    noNode: "Ajoutez d'abord les nœuds à Gladys (onglet Découverte de l'intégration).",
+    offline: 'Hors ligne',
+    never: 'Pas encore entendu',
+    lastMessage: (name, channel, time, text) => `${name} (${channel}, ${time}) : ${text}`,
+    direct: 'direct',
+    channel: (index, name) => (name ? `Canal ${index} · ${name}` : `Canal ${index}`),
+    send: 'Envoyer un message',
+    text: 'Message',
+    channelField: 'Canal',
+    sent: 'Message envoyé.',
+    clipped: 'Message coupé à 200 octets et envoyé.',
+  },
+  de: {
+    notConfigured:
+      'Gib die Adresse eines Meshtastic-Knotens oder des MQTT-Brokers in der Konfiguration ein.',
+    noNode: 'Füge die Knoten zuerst zu Gladys hinzu (Tab „Erkennung“ der Integration).',
+    offline: 'Offline',
+    never: 'Noch nicht gehört',
+    lastMessage: (name, channel, time, text) => `${name} (${channel}, ${time}): ${text}`,
+    direct: 'direkt',
+    channel: (index, name) => (name ? `Kanal ${index} · ${name}` : `Kanal ${index}`),
+    send: 'Nachricht senden',
+    text: 'Nachricht',
+    channelField: 'Kanal',
+    sent: 'Nachricht gesendet.',
+    clipped: 'Nachricht auf 200 Bytes gekürzt und gesendet.',
+  },
+  es: {
+    notConfigured:
+      'Introduzca la dirección de un nodo Meshtastic o del broker MQTT en la configuración.',
+    noNode: 'Añada primero los nodos a Gladys (pestaña Descubrimiento de la integración).',
+    offline: 'Fuera de línea',
+    never: 'Aún no oído',
+    lastMessage: (name, channel, time, text) => `${name} (${channel}, ${time}): ${text}`,
+    direct: 'directo',
+    channel: (index, name) => (name ? `Canal ${index} · ${name}` : `Canal ${index}`),
+    send: 'Enviar un mensaje',
+    text: 'Mensaje',
+    channelField: 'Canal',
+    sent: 'Mensaje enviado.',
+    clipped: 'Mensaje cortado a 200 bytes y enviado.',
   },
 };
 
-// A live tile references a feature by its external_id: read it from the
-// discovery payload itself, so the widget and the device never disagree.
-function featureExternalId(gladys, config, blueprint, category) {
-  const device = blueprint.buildDevice(gladys, config);
-  return device.features.find((feature) => feature.category === category).external_id;
-}
+const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const localized = (text) => ({ en: text, fr: text, de: text, es: text });
+const bool = (value, fallback) =>
+  value === true || value === 'true'
+    ? true
+    : value === false || value === 'false'
+      ? false
+      : fallback;
 
-function plugConnectionStatus(gladys, config) {
-  const { transport, degraded } = plug.transport(gladys, config);
-  const { value, color } = TRANSPORT_STATUS[transport];
-  if (degraded) {
-    return {
-      value: { en: `${value.en} (degraded mode)`, fr: `${value.fr} (mode dégradé)` },
-      color: WIDGET_COLORS.WARNING,
-    };
-  }
-  return { value, color };
-}
-
-export const WIDGETS = {
-  [DEMO_STATUS_WIDGET]: {
-    // `settings` holds the per-instance values of the declared `settings`
-    // (none here); `language` and `units` are those of the user viewing the
-    // dashboard, for the values you format yourself. Multi-language objects
-    // (`{ en, fr }`) are picked by the core, like everywhere else.
-    async get(gladys, { config }) {
-      logger.debug(`onWidgetGet <- ${DEMO_STATUS_WIDGET}`);
-      return {
-        // Reload policy: the computed parts below only change with the
-        // config, and index.js nudges the widget on every (re)connection and
-        // config update (see refreshWidgets) — the TTL is just a safety net.
-        ttl_seconds: 300,
-        components: [
-          // Device-bound tiles: LIVE, they follow the published states over
-          // the core's real-time path. No TTL, no nudge involved.
-          {
-            type: 'value',
-            label: { en: 'Temperature', fr: 'Température' },
-            icon: 'thermometer',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              weatherStation,
-              DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
-            ),
-          },
-          {
-            type: 'value',
-            label: { en: 'Office plug', fr: 'Prise du bureau' },
-            icon: 'zap',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              plug,
-              DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-            ),
-          },
-          // Computed rows: what the integration knows that no device feature
-          // carries. Served from the core cache until the TTL or a nudge.
-          {
-            type: 'status',
-            items: [
-              {
-                label: { en: 'Plug connection', fr: 'Connexion de la prise' },
-                icon: 'wifi',
-                ...plugConnectionStatus(gladys, config),
-              },
-              {
-                label: { en: 'Observed location', fr: 'Position observée' },
-                icon: 'map-pin',
-                value: `${config.latitude.toFixed(2)}, ${config.longitude.toFixed(2)}`,
-                color: WIDGET_COLORS.NEUTRAL,
-              },
-            ],
-          },
-          // `params` are declared HERE and sent back as-is: the handler never
-          // receives user input (a dashboard can hang on a public wall).
-          {
-            type: 'button',
-            label: { en: 'Identify the light', fr: 'Identifier la lampe' },
-            icon: 'eye',
-            style: 'secondary',
-            action: {
-              key: DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT,
-              params: { device: light.deviceExternalId(gladys) },
-            },
-          },
-        ],
-      };
-    },
-
-    // Resolve an optional toast (string or multi-language object, ≤ 200
-    // characters). After a successful action the core drops the cached
-    // content and every open dashboard refetches it: no nudge needed.
-    async action(gladys, { actionKey, params, config }) {
-      logger.info(`onWidgetAction <- ${DEMO_STATUS_WIDGET}.${actionKey}`);
-      if (actionKey === DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT) {
-        return identifyDevice(gladys, params.device, config);
-      }
-      // Throwing acks the action as failed: the message reaches the user.
-      throw new Error(`Unknown widget action: ${actionKey}`);
-    },
-  },
-};
+const textContent = (text) => ({
+  ttl_seconds: CONTENT_TTL_SECONDS,
+  components: [{ type: 'text', variant: 'body', text: clip(text, 300) }],
+});
 
 /**
- * Freshness nudge: ask the core to re-pull every widget NOW instead of
- * waiting for the content TTL. Call it when you KNOW a computed content
- * changed (here: the config, which drives the plug transport and the observed
- * location) — and after every (re)connection, since the nudges are
- * fire-and-forget: rate-limited core-side to 1 per 10 s per widget, dropped
- * silently while disconnected.
+ * The channels offered by the send form: the enabled ones of a TCP node
+ * (with their names), all eight over MQTT (the gateway's are unknown).
+ * @param {Map<number, { name: string, role: number }>} channels
  */
-export function refreshWidgets(gladys) {
-  for (const key of Object.keys(WIDGETS)) {
-    gladys.requestWidgetRefresh(key);
+export function channelOptions(channels, language) {
+  const text = pick(TEXT, language);
+  const known = [...channels.entries()].filter(([, channel]) => channel.role !== 0);
+  const list =
+    known.length > 0
+      ? known.map(([index, channel]) => [index, channel.name])
+      : CHANNELS.map((index) => [index, '']);
+  return list
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, name]) => ({
+      value: String(index),
+      label: localized(clip(text.channel(index, name), 40)),
+    }));
+}
+
+/**
+ * Pure builder of the widget content.
+ * @param {object} input
+ * @param {{ name: string, online: boolean, battery: number|null, agoMs: number|null }[]} input.nodes
+ * @param {{ name: string, direct: boolean, channel: number, at: number, text: string }|null} input.message
+ * @param {Array<{ value: string, label: object }>} input.channels
+ * @param {{ showMessage: boolean, showSend: boolean, hideOffline: boolean }} input.options
+ * @param {string} input.language
+ */
+export function buildMeshContent({ nodes, message, channels, options, language }) {
+  const text = pick(TEXT, language);
+  const components = [];
+  const lines = [...nodes]
+    .filter((node) => !options.hideOffline || node.online)
+    .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, language))
+    .slice(0, MAX_LINES)
+    .map((node) => {
+      const heard = node.agoMs === null ? text.never : formatAgo(node.agoMs, language);
+      const value = node.online
+        ? [node.battery === null ? null : `${node.battery} %`, heard].filter(Boolean).join(' · ')
+        : `${text.offline} · ${heard}`;
+      return {
+        label: clip(node.name, 40),
+        value: clip(value, 40),
+        icon: node.online ? 'radio' : 'wifi-off',
+        color: node.online ? WIDGET_COLORS.SUCCESS : WIDGET_COLORS.DANGER,
+      };
+    });
+  if (lines.length > 0) {
+    components.push({ type: 'status', items: lines });
   }
+  if (options.showMessage && message) {
+    const where = message.direct ? text.direct : text.channel(message.channel, '');
+    components.push({
+      type: 'text',
+      variant: 'body',
+      text: clip(
+        text.lastMessage(message.name, where, formatHeard(message.at, language), message.text),
+        300,
+      ),
+    });
+  }
+  if (options.showSend) {
+    components.push({
+      type: 'button',
+      label: text.send,
+      icon: 'send',
+      style: 'secondary',
+      action: {
+        key: WIDGET_ACTION.SEND,
+        fields: [
+          { key: 'text', type: 'string', required: true, label: localized(text.text) },
+          {
+            key: 'channel',
+            type: 'select',
+            required: true,
+            default: channels[0]?.value ?? '0',
+            label: localized(text.channelField),
+            options: channels,
+          },
+        ],
+      },
+    });
+  }
+  return { ttl_seconds: CONTENT_TTL_SECONDS, components };
+}
+
+/**
+ * The onWidgetGet handler of the mesh widget.
+ * @param {import('./hub.js').Hub} hub
+ * @param {{ settings?: object, language?: string }} request
+ */
+export function getMeshWidget(hub, { settings = {}, language = 'en' } = {}) {
+  const text = pick(TEXT, language);
+  if (!isConfigured(hub.config)) {
+    return textContent(text.notConfigured);
+  }
+  const added = hub.addedNodes();
+  if (added.length === 0) {
+    return textContent(text.noNode);
+  }
+  const now = hub.now();
+  const nodes = added.map(({ num, device }) => {
+    const node = hub.mesh.nodes.get(num);
+    return {
+      name: device.name || node?.longName || '?',
+      online: hub.isOnline(node, now),
+      battery: node?.battery ?? null,
+      agoMs: node?.lastHeard == null ? null : now - node.lastHeard,
+    };
+  });
+  const last = hub.mesh.messages[hub.mesh.messages.length - 1] ?? null;
+  const sender = last ? added.find((entry) => entry.num === last.from)?.device : null;
+  const message = last ? { ...last, name: sender?.name || hub.mesh.displayName(last.from) } : null;
+  return buildMeshContent({
+    nodes,
+    message,
+    channels: channelOptions(hub.mesh.channels, language),
+    options: {
+      showMessage: bool(settings.show_message, true),
+      showSend: bool(settings.show_send, true),
+      hideOffline: bool(settings.hide_offline, false),
+    },
+    language,
+  });
+}
+
+/**
+ * The send button of the widget.
+ * @returns {Promise<object>} the toast, in the four languages (the viewer's is not passed)
+ */
+export async function onMeshAction(hub, actionKey, params, { values = {} } = {}) {
+  if (actionKey !== WIDGET_ACTION.SEND) {
+    throw new Error(`Unknown widget action ${actionKey}`);
+  }
+  const channel = Number(values.channel ?? 0);
+  const { clipped } = await hub.sendText({
+    text: values.text,
+    channel: CHANNELS.includes(channel) ? channel : 0,
+  });
+  return Object.fromEntries(
+    Object.entries(TEXT).map(([lang, text]) => [lang, clipped ? text.clipped : text.sent]),
+  );
 }

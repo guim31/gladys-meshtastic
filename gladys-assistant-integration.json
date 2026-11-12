@@ -1,177 +1,760 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Meshtastic",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Meshtastic LoRa mesh: nodes, battery, telemetry, received and sent text messages.",
+    "fr": "Réseau maillé LoRa Meshtastic : nœuds, batterie, télémétrie, messages reçus et envoyés.",
+    "de": "Meshtastic-LoRa-Mesh: Knoten, Akku, Telemetrie, empfangene und gesendete Textnachrichten.",
+    "es": "Red mallada LoRa Meshtastic: nodos, batería, telemetría, mensajes recibidos y enviados."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
-  "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "docker_image": "ghcr.io/guim31/gladys-meshtastic:1.0.0",
+  "gladys_version": ">=5.2.0",
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-meshtastic/main/cover.png",
+  "categories": ["protocols", "network", "notifications"],
+  "transports": ["local"],
+  "location": true,
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Connection to the mesh",
+        "fr": "Connexion au maillage",
+        "de": "Verbindung zum Mesh",
+        "es": "Conexión con la malla"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Either TCP to one node on Wi-Fi or Ethernet (or meshtasticd), or the JSON its MQTT module publishes. USB serial is not supported.",
+        "fr": "Soit en TCP vers un nœud en Wi-Fi ou Ethernet (ou meshtasticd), soit par le JSON que publie son module MQTT. La liaison série USB n'est pas prise en charge.",
+        "de": "Entweder per TCP zu einem Knoten über WLAN oder Ethernet (oder meshtasticd) oder über das JSON seines MQTT-Moduls. USB-Seriell wird nicht unterstützt.",
+        "es": "Por TCP hacia un nodo en Wi-Fi o Ethernet (o meshtasticd), o por el JSON que publica su módulo MQTT. El puerto serie USB no es compatible."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://meshtastic.org/docs/configuration/radio/network/",
+          "label": {
+            "en": "Network settings of a node",
+            "fr": "Réglages réseau d'un nœud",
+            "de": "Netzwerkeinstellungen eines Knotens",
+            "es": "Ajustes de red de un nodo"
+          }
+        },
+        {
+          "url": "https://meshtastic.org/docs/software/integrations/mqtt/",
+          "label": {
+            "en": "Meshtastic MQTT",
+            "fr": "MQTT de Meshtastic",
+            "de": "Meshtastic-MQTT",
+            "es": "MQTT de Meshtastic"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
+      "key": "connection",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
+      "label": {
+        "en": "Connection",
+        "fr": "Connexion",
+        "de": "Verbindung",
+        "es": "Conexión"
+      },
+      "required": true,
+      "default": "tcp",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "tcp",
+          "label": {
+            "en": "TCP to a node (port 4403)",
+            "fr": "TCP vers un nœud (port 4403)",
+            "de": "TCP zu einem Knoten (Port 4403)",
+            "es": "TCP hacia un nodo (puerto 4403)"
+          }
+        },
+        {
+          "value": "mqtt",
+          "label": {
+            "en": "MQTT broker (JSON)",
+            "fr": "Broker MQTT (JSON)",
+            "de": "MQTT-Broker (JSON)",
+            "es": "Broker MQTT (JSON)"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "host",
+      "type": "string",
+      "label": {
+        "en": "Node address (TCP)",
+        "fr": "Adresse du nœud (TCP)",
+        "de": "Adresse des Knotens (TCP)",
+        "es": "Dirección del nodo (TCP)"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "IP address or host name of the node, with its network API on. The node accepts one TCP client at a time.",
+        "fr": "Adresse IP ou nom d'hôte du nœud, API réseau activée. Le nœud n'accepte qu'un client TCP à la fois.",
+        "de": "IP-Adresse oder Hostname des Knotens mit aktiver Netzwerk-API. Der Knoten nimmt nur einen TCP-Client gleichzeitig an.",
+        "es": "Dirección IP o nombre de host del nodo, con su API de red activada. El nodo solo acepta un cliente TCP a la vez."
+      },
+      "placeholder": {
+        "en": "e.g. 192.0.2.40",
+        "fr": "ex. 192.0.2.40",
+        "de": "z. B. 192.0.2.40",
+        "es": "p. ej. 192.0.2.40"
+      },
+      "required": false
+    },
+    {
+      "key": "port",
+      "type": "number",
+      "label": {
+        "en": "TCP port",
+        "fr": "Port TCP",
+        "de": "TCP-Port",
+        "es": "Puerto TCP"
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": 4403,
+      "min": 1,
+      "max": 65535
+    },
+    {
+      "key": "mqtt",
+      "type": "section",
+      "label": {
+        "en": "MQTT broker",
+        "fr": "Broker MQTT",
+        "de": "MQTT-Broker",
+        "es": "Broker MQTT"
+      },
+      "description": {
+        "en": "Only with the MQTT connection: a local broker the node's MQTT module publishes to, with JSON output on (not available on nRF52 boards).",
+        "fr": "Seulement avec la connexion MQTT : un broker local où publie le module MQTT du nœud, sortie JSON activée (indisponible sur les cartes nRF52).",
+        "de": "Nur mit der MQTT-Verbindung: ein lokaler Broker, an den das MQTT-Modul des Knotens sendet, mit aktiver JSON-Ausgabe (nicht auf nRF52-Boards).",
+        "es": "Solo con la conexión MQTT: un broker local donde publica el módulo MQTT del nodo, con salida JSON activada (no disponible en placas nRF52)."
+      }
+    },
+    {
+      "key": "broker_url",
+      "type": "string",
+      "label": {
+        "en": "Broker address",
+        "fr": "Adresse du broker",
+        "de": "Adresse des Brokers",
+        "es": "Dirección del broker"
+      },
+      "placeholder": {
+        "en": "e.g. mqtt://192.0.2.10:1883",
+        "fr": "ex. mqtt://192.0.2.10:1883",
+        "de": "z. B. mqtt://192.0.2.10:1883",
+        "es": "p. ej. mqtt://192.0.2.10:1883"
+      },
+      "required": false
+    },
+    {
+      "key": "username",
+      "type": "string",
+      "label": {
+        "en": "User name",
+        "fr": "Nom d'utilisateur",
+        "de": "Benutzername",
+        "es": "Nombre de usuario"
+      },
+      "required": false
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": {
+        "en": "Password",
+        "fr": "Mot de passe",
+        "de": "Passwort",
+        "es": "Contraseña"
+      },
+      "required": false
+    },
+    {
+      "key": "tls_insecure",
+      "type": "boolean",
+      "label": {
+        "en": "Accept a self-signed certificate (mqtts)",
+        "fr": "Accepter un certificat auto-signé (mqtts)",
+        "de": "Selbstsigniertes Zertifikat akzeptieren (mqtts)",
+        "es": "Aceptar un certificado autofirmado (mqtts)"
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "topic_root",
+      "type": "string",
+      "label": {
+        "en": "Root topic",
+        "fr": "Sujet racine",
+        "de": "Root-Topic",
+        "es": "Tema raíz"
+      },
+      "description": {
+        "en": "The root topic of the node's MQTT module (msh by default); the region is added by the firmware.",
+        "fr": "Le sujet racine du module MQTT du nœud (msh par défaut) ; le firmware y ajoute la région.",
+        "de": "Das Root-Topic des MQTT-Moduls des Knotens (standardmäßig msh); die Firmware hängt die Region an.",
+        "es": "El tema raíz del módulo MQTT del nodo (msh por defecto); el firmware añade la región."
+      },
+      "placeholder": {
+        "en": "msh",
+        "fr": "msh",
+        "de": "msh",
+        "es": "msh"
+      },
+      "required": false,
+      "default": "msh"
+    },
+    {
+      "key": "gateway",
+      "type": "string",
+      "label": {
+        "en": "Sending node (MQTT)",
+        "fr": "Nœud d'envoi (MQTT)",
+        "de": "Sendeknoten (MQTT)",
+        "es": "Nodo de envío (MQTT)"
+      },
+      "description": {
+        "en": "Id of the node that has a channel named mqtt with downlink on, to send messages. Empty: the last node heard on MQTT.",
+        "fr": "Identifiant du nœud qui a un canal nommé mqtt avec downlink activé, pour envoyer des messages. Vide : le dernier nœud entendu en MQTT.",
+        "de": "ID des Knotens mit einem Kanal namens mqtt und aktivem Downlink, zum Senden. Leer: der zuletzt über MQTT gehörte Knoten.",
+        "es": "Identificador del nodo con un canal llamado mqtt y downlink activado, para enviar mensajes. Vacío: el último nodo oído por MQTT."
+      },
+      "placeholder": {
+        "en": "e.g. !a1b2c3d4",
+        "fr": "ex. !a1b2c3d4",
+        "de": "z. B. !a1b2c3d4",
+        "es": "p. ej. !a1b2c3d4"
+      },
+      "required": false
+    },
+    {
+      "key": "options",
+      "type": "section",
+      "label": {
+        "en": "Options",
+        "fr": "Options",
+        "de": "Optionen",
+        "es": "Opciones"
+      }
+    },
+    {
+      "key": "offline_after",
+      "type": "select",
+      "label": {
+        "en": "Offline after",
+        "fr": "Hors ligne après",
+        "de": "Offline nach",
+        "es": "Fuera de línea tras"
+      },
+      "description": {
+        "en": "A node not heard for this long is shown offline. Nodes send their telemetry every 30 minutes by default.",
+        "fr": "Un nœud non entendu depuis ce délai est indiqué hors ligne. Les nœuds envoient leur télémétrie toutes les 30 minutes par défaut.",
+        "de": "Ein Knoten, der so lange nicht gehört wurde, wird als offline angezeigt. Knoten senden ihre Telemetrie standardmäßig alle 30 Minuten.",
+        "es": "Un nodo no oído durante este tiempo aparece fuera de línea. Los nodos envían su telemetría cada 30 minutos por defecto."
+      },
+      "required": false,
+      "default": "120",
+      "options": [
+        {
+          "value": "30",
+          "label": {
+            "en": "30 minutes",
+            "fr": "30 minutes",
+            "de": "30 Minuten",
+            "es": "30 minutos"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 hour",
+            "fr": "1 heure",
+            "de": "1 Stunde",
+            "es": "1 hora"
+          }
+        },
+        {
+          "value": "120",
+          "label": {
+            "en": "2 hours",
+            "fr": "2 heures",
+            "de": "2 Stunden",
+            "es": "2 horas"
+          }
+        },
+        {
+          "value": "180",
+          "label": {
+            "en": "3 hours",
+            "fr": "3 heures",
+            "de": "3 Stunden",
+            "es": "3 horas"
+          }
+        },
+        {
+          "value": "360",
+          "label": {
+            "en": "6 hours",
+            "fr": "6 heures",
+            "de": "6 Stunden",
+            "es": "6 horas"
+          }
+        }
+      ]
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the texts",
+        "fr": "Langue des textes",
+        "de": "Sprache der Texte",
+        "es": "Idioma de los textos"
+      },
+      "description": {
+        "en": "Language of the feature names and of the texts the integration produces.",
+        "fr": "Langue des noms de fonctionnalités et des textes produits par l'intégration.",
+        "de": "Sprache der Funktionsnamen und der Texte der Integration.",
+        "es": "Idioma de los nombres de funciones y de los textos de la integración."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
+      "key": "check_connection",
+      "label": {
+        "en": "Check the connection",
+        "fr": "Vérifier la connexion",
+        "de": "Verbindung prüfen",
+        "es": "Comprobar la conexión"
+      },
+      "timeout_seconds": 15
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "message_received",
+      "label": {
+        "en": "Meshtastic: message received",
+        "fr": "Meshtastic : message reçu",
+        "de": "Meshtastic: Nachricht empfangen",
+        "es": "Meshtastic: mensaje recibido"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "A text message arrived on a channel of the mesh or directly. Leave a filter empty for any value.",
+        "fr": "Un message texte est arrivé sur un canal du maillage ou en direct. Laissez un filtre vide pour toute valeur.",
+        "de": "Eine Textnachricht kam auf einem Kanal des Mesh oder direkt an. Lass einen Filter leer für jeden Wert.",
+        "es": "Llegó un mensaje de texto a un canal de la malla o en directo. Deje un filtro vacío para cualquier valor."
       },
       "fields": [
         {
-          "key": "device",
+          "key": "channel",
           "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
+          "label": {
+            "en": "Channel",
+            "fr": "Canal",
+            "de": "Kanal",
+            "es": "Canal"
+          },
+          "options": [
+            {
+              "value": "direct",
+              "label": {
+                "en": "Direct message",
+                "fr": "Message direct",
+                "de": "Direktnachricht",
+                "es": "Mensaje directo"
+              }
+            },
+            {
+              "value": "0",
+              "label": {
+                "en": "Channel 0 (primary)",
+                "fr": "Canal 0 (principal)",
+                "de": "Kanal 0 (primär)",
+                "es": "Canal 0 (principal)"
+              }
+            },
+            {
+              "value": "1",
+              "label": {
+                "en": "Channel 1",
+                "fr": "Canal 1",
+                "de": "Kanal 1",
+                "es": "Canal 1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "Channel 2",
+                "fr": "Canal 2",
+                "de": "Kanal 2",
+                "es": "Canal 2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "Channel 3",
+                "fr": "Canal 3",
+                "de": "Kanal 3",
+                "es": "Canal 3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "Channel 4",
+                "fr": "Canal 4",
+                "de": "Kanal 4",
+                "es": "Canal 4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "Channel 5",
+                "fr": "Canal 5",
+                "de": "Kanal 5",
+                "es": "Canal 5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "Channel 6",
+                "fr": "Canal 6",
+                "de": "Kanal 6",
+                "es": "Canal 6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "Channel 7",
+                "fr": "Canal 7",
+                "de": "Kanal 7",
+                "es": "Canal 7"
+              }
+            }
+          ]
         },
         {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
+          "key": "sender",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Sender node",
+            "fr": "Nœud expéditeur",
+            "de": "Absenderknoten",
+            "es": "Nodo remitente"
+          }
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "text",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Message text",
+            "fr": "Texte du message",
+            "de": "Nachrichtentext",
+            "es": "Texto del mensaje"
+          }
+        },
+        {
+          "key": "sender_name",
+          "type": "string",
+          "label": {
+            "en": "Sender name",
+            "fr": "Nom de l'expéditeur",
+            "de": "Name des Absenders",
+            "es": "Nombre del remitente"
+          }
+        },
+        {
+          "key": "sender_id",
+          "type": "string",
+          "label": {
+            "en": "Sender node id",
+            "fr": "Identifiant du nœud expéditeur",
+            "de": "Knoten-ID des Absenders",
+            "es": "Identificador del nodo remitente"
+          }
+        },
+        {
+          "key": "channel",
+          "type": "string",
+          "label": {
+            "en": "Channel",
+            "fr": "Canal",
+            "de": "Kanal",
+            "es": "Canal"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
+      "key": "send_message",
       "timeout_seconds": 15,
+      "label": {
+        "en": "Meshtastic: send a message",
+        "fr": "Meshtastic : envoyer un message",
+        "de": "Meshtastic: Nachricht senden",
+        "es": "Meshtastic: enviar un mensaje"
+      },
+      "description": {
+        "en": "Send a text on a channel of the mesh, or directly to a node. Cut to 200 bytes.",
+        "fr": "Envoie un texte sur un canal du maillage, ou directement à un nœud. Coupé à 200 octets.",
+        "de": "Sendet einen Text auf einem Kanal des Mesh oder direkt an einen Knoten. Auf 200 Bytes gekürzt.",
+        "es": "Envía un texto a un canal de la malla, o directamente a un nodo. Cortado a 200 bytes."
+      },
       "fields": [
         {
-          "key": "device",
+          "key": "text",
+          "type": "string",
+          "required": true,
+          "label": {
+            "en": "Message",
+            "fr": "Message",
+            "de": "Nachricht",
+            "es": "Mensaje"
+          }
+        },
+        {
+          "key": "channel",
+          "type": "select",
+          "required": true,
+          "label": {
+            "en": "Channel",
+            "fr": "Canal",
+            "de": "Kanal",
+            "es": "Canal"
+          },
+          "options": [
+            {
+              "value": "0",
+              "label": {
+                "en": "Channel 0 (primary)",
+                "fr": "Canal 0 (principal)",
+                "de": "Kanal 0 (primär)",
+                "es": "Canal 0 (principal)"
+              }
+            },
+            {
+              "value": "1",
+              "label": {
+                "en": "Channel 1",
+                "fr": "Canal 1",
+                "de": "Kanal 1",
+                "es": "Canal 1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "Channel 2",
+                "fr": "Canal 2",
+                "de": "Kanal 2",
+                "es": "Canal 2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "Channel 3",
+                "fr": "Canal 3",
+                "de": "Kanal 3",
+                "es": "Canal 3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "Channel 4",
+                "fr": "Canal 4",
+                "de": "Kanal 4",
+                "es": "Canal 4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "Channel 5",
+                "fr": "Canal 5",
+                "de": "Kanal 5",
+                "es": "Canal 5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "Channel 6",
+                "fr": "Canal 6",
+                "de": "Kanal 6",
+                "es": "Canal 6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "Channel 7",
+                "fr": "Canal 7",
+                "de": "Kanal 7",
+                "es": "Canal 7"
+              }
+            }
+          ]
+        },
+        {
+          "key": "node",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "label": {
+            "en": "Node (direct message, optional)",
+            "fr": "Nœud (message direct, facultatif)",
+            "de": "Knoten (Direktnachricht, optional)",
+            "es": "Nodo (mensaje directo, opcional)"
+          }
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
+          "key": "sent",
           "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "label": {
+            "en": "Sent",
+            "fr": "Envoyé",
+            "de": "Gesendet",
+            "es": "Enviado"
+          }
+        },
+        {
+          "key": "clipped",
+          "type": "boolean",
+          "label": {
+            "en": "Cut to 200 bytes",
+            "fr": "Coupé à 200 octets",
+            "de": "Auf 200 Bytes gekürzt",
+            "es": "Cortado a 200 bytes"
+          }
+        },
+        {
+          "key": "summary",
+          "type": "string",
+          "label": {
+            "en": "Sentence",
+            "fr": "Phrase",
+            "de": "Satz",
+            "es": "Frase"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "mesh",
+      "icon": "radio",
+      "action_timeout_seconds": 20,
+      "label": {
+        "en": "Meshtastic mesh",
+        "fr": "Maillage Meshtastic",
+        "de": "Meshtastic-Mesh",
+        "es": "Malla Meshtastic"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "Your nodes, battery and last heard, the last message, and a button to send one.",
+        "fr": "Vos nœuds, batterie et dernière écoute, le dernier message, et un bouton pour en envoyer.",
+        "de": "Deine Knoten, Akku und zuletzt gehört, die letzte Nachricht und eine Taste zum Senden.",
+        "es": "Sus nodos, batería y última escucha, el último mensaje y un botón para enviar uno."
+      },
+      "settings": [
+        {
+          "key": "show_message",
+          "type": "boolean",
+          "default": true,
+          "label": {
+            "en": "Show the last message",
+            "fr": "Afficher le dernier message",
+            "de": "Letzte Nachricht anzeigen",
+            "es": "Mostrar el último mensaje"
+          }
+        },
+        {
+          "key": "show_send",
+          "type": "boolean",
+          "default": true,
+          "label": {
+            "en": "Show the send button",
+            "fr": "Afficher le bouton d'envoi",
+            "de": "Sendetaste anzeigen",
+            "es": "Mostrar el botón de envío"
+          }
+        },
+        {
+          "key": "hide_offline",
+          "type": "boolean",
+          "default": false,
+          "label": {
+            "en": "Hide offline nodes",
+            "fr": "Masquer les nœuds hors ligne",
+            "de": "Offline-Knoten ausblenden",
+            "es": "Ocultar los nodos fuera de línea"
+          }
+        }
+      ]
     }
   ]
 }

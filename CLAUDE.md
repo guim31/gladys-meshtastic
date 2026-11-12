@@ -31,17 +31,22 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          SDK wiring only: src/app.js registers the handlers before connect()
+src/app.js                        handlers: discovery, action, scene action, widget (+ button), configuration
+src/hub.js                        link to the mesh, discovery, states, message_received trigger, sending
+src/tcp.js                        TCP client API (0x94 0xC3 framing, want_config, heartbeat, reconnection)
+src/mqtt.js                       MQTT client, its link states, publish (JSON downlink)
+src/meshtastic.js                 pure: FromRadio/ToRadio and MQTT JSON -> events, text encoding
+src/protobuf.js                   pure: minimal protobuf wire codec (no GPL generated code)
+src/nodes.js                      pure: the mesh model (nodes, channels, last messages), SNR -> bars
+src/devices.js                    node devices and their features
+src/scenes.js, src/widgets.js     send_message scene action, mesh widget
+src/texts.js                      every text, in en/fr/de/es
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+gladys-assistant-integration.json manifest
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys
+test/                             node --test, against the SDK's fake Gladys, a fake node and a fake broker
+test/fixtures/                    frames captured from meshtasticd, its MQTT JSON
 ```
 
 ## Rules
@@ -251,3 +256,34 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Meshtastic (cette intégration)
+
+- **Licences** : `@meshtastic/protobufs` et `@meshtastic/core` sont en **GPL-3.0** ; le dépôt est Apache-2.0 et
+  publié en image. On ne lit que les **numéros de champs** des `.proto` publics (`mesh.proto`,
+  `telemetry.proto`, `channel.proto`), décodés à la main (`src/protobuf.js`). Les messages de test fabriqués avec
+  la bibliothèque officielle (dev, hors image) sont dans `test/fixtures/tcp-frames.json`, à côté de trames réelles.
+- **API TCP** (port 4403) : trames `0x94 0xC3 <MSB> <LSB> <protobuf ≤ 512>`. `ToRadio.want_config_id` (champ 3)
+  déclenche `my_info`, `node_info` (toute la NodeDB), `channel` ×8, configs, puis `config_complete_id` (même
+  nonce). `ToRadio.heartbeat` (champ 7, vide) toutes les 5 min. `disconnect` (champ 4) à l'arrêt libère la place :
+  **un nœud n'accepte qu'un client TCP** (l'appli Meshtastic en Wi-Fi le perd).
+- **Envoi d'un texte en TCP** : sans `want_ack`, un `hop_limit` laissé à 0 part à 0 saut (vérifié sur meshtasticd :
+  `HopLim=0`) ; avec `want_ack`, le firmware applique sa limite configurée (`Router.cpp`). Les applis officielles
+  mettent `want_ack` : on fait pareil.
+- Le firmware renvoie au client des paquets `ROUTING_APP` (5) et, en radio simulée, `SIMULATOR_APP` (69) : ignorés.
+- **MQTT JSON** (`MeshPacketSerializer.cpp`) : `<racine>/2/json/<canal>/<passerelle>` ; la racine par défaut
+  devient `msh/<RÉGION>` sur un vrai nœud, `msh` en simulé : le **préfixe s'apprend du trafic**. `sender` est la
+  passerelle, pas l'émetteur. Un texte qui est du JSON est publié **parsé** (`payload` = l'objet) : on le rend en
+  texte. `voltage` existe dans les métriques d'appareil **et** d'environnement : distinguées par
+  `channel_utilization`/`uptime_seconds`/`battery_level`. Le même paquet est publié **plusieurs fois** (relais,
+  passerelles) : dédoublonnage par `from:id` sur 10 min, sinon le déclencheur part en double.
+- **Envoi JSON** : publier `{"from": <passerelle décimale>, "channel": n, "type": "sendtext", "payload": "…"}` (et
+  `to` pour un direct) sur `<préfixe>/2/json/mqtt/` ; la passerelle doit avoir un canal nommé `mqtt` avec downlink, et
+  **redémarrer** pour s'y abonner. Elle republie ensuite le texte en uplink avec `from` = elle-même : ignoré comme
+  écho. Vérifié de bout en bout sur meshtasticd 2.7.
+- `battery_level` 101 = alimenté sans batterie (affiché 100) ; 0 et une tension de 0 = pas de mesure.
+- `last_heard` de la NodeDB est l'horloge du nœud (0 sans heure) : ignoré s'il est dans le futur. Le SNR n'a de
+  sens que pour un paquet **direct** (`hop_start - hop_limit = 0`).
+- **meshtasticd en Docker** : `meshtasticd -s` (radio simulée) ; un changement de région ou de canal **redémarre**
+  le processus, dont l'`execv` échoue dans l'image : relancer le conteneur (`docker start`). Le CLI Python
+  `meshtastic --host <ip>` règle les nœuds. Deux nœuds simulés ne s'entendent pas par radio.
