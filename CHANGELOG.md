@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-12
+
 ### Added
 
 - The nodes of a Meshtastic LoRa mesh as Gladys devices, over TCP (a node on
@@ -25,3 +27,6 @@ the notes of the version's GitHub Release.
   and a "Send a message" button with a form; each block can be hidden.
 - "Check the connection" action, documentation in English, French, German and
   Spanish.
+
+[Unreleased]: https://github.com/guim31/gladys-meshtastic/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-meshtastic/releases/tag/v1.0.0
